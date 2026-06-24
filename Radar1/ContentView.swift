@@ -1,5 +1,6 @@
 import SwiftUI
 import MWDATCore
+import MWDATMockDevice
 import Combine
 
 struct ContentView: View {
@@ -20,91 +21,57 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
-            switch glassesManager.registrationState {
-            case .unavailable:
-                Text("Registration unavailable")
-                    .foregroundColor(.secondary)
-
-            case .available:
-                Button("Register with Meta AI") {
-                    glassesManager.register()
+            Button(glassesManager.isConnected ? "Disconnect" : "Connect to Mock Glasses") {
+                if glassesManager.isConnected {
+                    glassesManager.disconnect()
+                } else {
+                    glassesManager.connect()
                 }
-                .buttonStyle(.borderedProminent)
-
-            case .registering:
-                ProgressView()
-                    .progressViewStyle(.circular)
-
-            case .registered:
-                Button(glassesManager.isConnected ? "Disconnect" : "Connect to Glasses") {
-                    if glassesManager.isConnected {
-                        glassesManager.disconnect()
-                    } else {
-                        glassesManager.connect()
-                    }
-                }
-                .buttonStyle(.borderedProminent)
             }
+            .buttonStyle(.borderedProminent)
         }
         .padding()
-        .task {
-            await glassesManager.observeRegistration()
-        }
     }
 }
 
 @MainActor
 class GlassesManager: ObservableObject {
-    @Published var statusMessage = "Not registered"
+    @Published var statusMessage = "Ready"
     @Published var isConnected = false
-    @Published var registrationState: RegistrationState = Wearables.shared.registrationState
 
     private var deviceSession: DeviceSession?
+    private var mockDevice: (any MockRaybanMeta)?
     private var monitorTask: Task<Void, Never>?
-    private var registrationTask: Task<Void, Never>?
 
-    func observeRegistration() async {
-        for await state in Wearables.shared.registrationStateStream() {
-            self.registrationState = state
-            switch state {
-            case .unavailable:
-                self.statusMessage = "Registration unavailable on this device."
-            case .available:
-                self.statusMessage = "Not registered. Tap below to link with Meta AI."
-            case .registering:
-                self.statusMessage = "Opening Meta AI to authorize…"
-            case .registered:
-                if !isConnected {
-                    self.statusMessage = "Registered. Tap Connect when glasses are on."
-                }
-            }
-        }
-    }
-
-    func register() {
-        registrationTask = Task {
-            do {
-                try await Wearables.shared.startRegistration()
-            } catch RegistrationError.alreadyRegistered {
-                self.registrationState = .registered
-                self.statusMessage = "Already registered."
-            } catch {
-                self.statusMessage = "Registration failed: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    func connect() {
-        guard !Wearables.shared.devices.isEmpty else {
-            statusMessage = "No glasses found. Make sure your Ray-Ban Meta glasses are powered on and in range."
-            return
-        }
-
-        statusMessage = "Connecting…"
+func connect() {
+        statusMessage = "Setting up mock glasses…"
 
         monitorTask = Task {
+            let device = MockDeviceKit.shared.pairRaybanMeta()
+            self.mockDevice = device
+
+            device.powerOn()
+            device.don()
+
+            // Wait for mock device to appear in Wearables.shared.devices
+            self.statusMessage = "Waiting for mock device to register…"
+            var targetId: DeviceIdentifier? = nil
+            for await devices in Wearables.shared.devicesStream() {
+                print("🔵 devicesStream update: \(devices)")
+                if let id = devices.first {
+                    targetId = id
+                    break
+                }
+            }
+
+            guard let deviceId = targetId else {
+                self.statusMessage = "Mock device never appeared in SDK device list"
+                return
+            }
+
+            print("🔵 Found device: \(deviceId)")
             do {
-                let selector = AutoDeviceSelector(wearables: Wearables.shared)
+                let selector = SpecificDeviceSelector(device: deviceId)
                 let session = try Wearables.shared.createSession(deviceSelector: selector)
                 try session.start()
                 self.deviceSession = session
@@ -113,7 +80,7 @@ class GlassesManager: ObservableObject {
                     switch state {
                     case .started:
                         self.isConnected = true
-                        self.statusMessage = "Glasses connected"
+                        self.statusMessage = "Mock glasses connected"
                     case .stopped:
                         self.isConnected = false
                         self.statusMessage = "Disconnected"
@@ -123,11 +90,9 @@ class GlassesManager: ObservableObject {
                     }
                 }
             } catch DeviceSessionError.noEligibleDevice {
-                self.statusMessage = "No eligible glasses found. Make sure they're powered on and in range."
-            } catch DeviceSessionError.sessionAlreadyExists {
-                self.statusMessage = "A session is already active. Disconnect first."
+                self.statusMessage = "No eligible device. SDK devices: \(Wearables.shared.devices). State: \(Wearables.shared.registrationState)"
             } catch {
-                self.statusMessage = "Error: \(error.localizedDescription)"
+                self.statusMessage = "Error: \(error)"
             }
         }
     }
@@ -137,7 +102,11 @@ class GlassesManager: ObservableObject {
         monitorTask = nil
         deviceSession?.stop()
         deviceSession = nil
+        if let device = mockDevice {
+            MockDeviceKit.shared.unpairDevice(device)
+        }
+        mockDevice = nil
         isConnected = false
-        statusMessage = "Tap Connect when glasses are on."
+        statusMessage = "Disconnected"
     }
 }

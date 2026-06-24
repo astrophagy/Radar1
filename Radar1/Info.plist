@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>AppLinkURLScheme</key>
+    <string>https://astrophagy.github.io</string>
+    <key>MetaAppID</key>
+    <string>2067771167492314</string>
+    <key>ClientToken</key>
+    <string>AR|2067771167492314|c62245ce567b423a1bf1041fa001863a</string>
+    <key>TeamID</key>
+    <string>9CBT5R94UJ</string>
+    <key>DAMEnabled</key>
+    <true/>
+<key>UISupportedExternalAccessoryProtocols</key>
+    <array>
+        <string>com.meta.ar.wearable</string>
+    </array>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>bluetooth-central</string>
+        <string>external-accessory</string>
+    </array>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Radar uses Bluetooth to connect to your Ray-Ban Meta glasses.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Radar uses Bluetooth to connect to your Ray-Ban Meta glasses.</string>
+</dict>
+</plist>
